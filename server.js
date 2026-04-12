@@ -7,7 +7,7 @@ const server = new WebSocket.Server({ port: PORT });
 
 // --- MongoDB Setup ---
 // REPLACE THIS WITH YOUR ACTUAL CONNECTION STRING!
-const MONGODB_URI = 'mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority';
+const MONGODB_URI = 'mongodb+srv://xantoniomatta_db_user:3ANbuBGHPr5HlfrD@whiteshadowsdb.kgx3nj6.mongodb.net/?appName=WhiteShadowsDB';
 const DB_NAME = 'white_shadows_agency';
 const COLLECTION_NAME = 'messages';
 

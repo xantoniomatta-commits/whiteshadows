@@ -1,8 +1,32 @@
+// White Shadows Agency - WebSocket Server with MongoDB Persistence
 const WebSocket = require('ws');
+const { MongoClient } = require('mongodb');
 
 const PORT = process.env.PORT || 8080;
 const server = new WebSocket.Server({ port: PORT });
 
+// --- MongoDB Setup ---
+// REPLACE THIS WITH YOUR ACTUAL CONNECTION STRING!
+const MONGODB_URI = 'mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority';
+const DB_NAME = 'white_shadows_agency';
+const COLLECTION_NAME = 'messages';
+
+let db, messagesCollection;
+
+async function connectToDatabase() {
+    try {
+        const client = new MongoClient(MONGODB_URI);
+        await client.connect();
+        db = client.db(DB_NAME);
+        messagesCollection = db.collection(COLLECTION_NAME);
+        console.log(`✅ Connected to MongoDB Atlas`);
+    } catch (error) {
+        console.error('❌ MongoDB connection failed:', error);
+    }
+}
+connectToDatabase();
+
+// Agent Database
 const AGENTS = {
   JIRO: { codename: 'JIRO', accessCode: 'ALPHA-7749', title: 'Chief · Division Alpha', alias: 'WARDEN', clearance: 'LEVEL 5', avatar: 'J' },
   REL: { codename: 'REL', accessCode: 'BETA-2281', title: 'Chief · Division Beta', clearance: 'LEVEL 4', avatar: 'R' },
@@ -12,11 +36,11 @@ const AGENTS = {
   SERA: { codename: 'SERA', accessCode: 'SHADOW-4402', title: 'White Shadow', clearance: 'LEVEL 3', avatar: 'S' }
 };
 
-const messageHistory = { alpha: [], beta: [], delta: [], briefing: [] };
-const MAX_HISTORY = 100;
 const clients = new Map();
+const MAX_HISTORY = 100;
 
-console.log(`WHITE SHADOWS AGENCY - SERVER READY`);
+console.log(`🔒 WHITE SHADOWS AGENCY - SERVER READY`);
+console.log(`📍 Listening on port ${PORT}`);
 
 server.on('connection', (ws) => {
   let agentName = null;
@@ -24,50 +48,61 @@ server.on('connection', (ws) => {
   
   const authTimeout = setTimeout(() => {
     if (!authenticated) {
-      ws.send(JSON.stringify({ type: 'system', content: 'AUTHENTICATION TIMEOUT' }));
+      ws.send(JSON.stringify({ type: 'system', content: '⛔ AUTHENTICATION TIMEOUT' }));
       ws.close();
     }
   }, 10000);
   
-  ws.on('message', (data) => {
+  ws.on('message', async (data) => {
     try {
       const msg = JSON.parse(data);
       
+      // LOGIN
       if (msg.type === 'login') {
-        const agent = AGENTS[msg.agent];
-        if (!agent || agent.accessCode !== msg.accessCode) {
-          ws.send(JSON.stringify({ type: 'system', content: 'ACCESS DENIED' }));
+        const requestedAgent = msg.agent;
+        const providedCode = msg.accessCode;
+        
+        const agent = AGENTS[requestedAgent];
+        if (!agent || agent.accessCode !== providedCode) {
+          ws.send(JSON.stringify({ type: 'system', content: '⛔ ACCESS DENIED' }));
           ws.close();
           return;
         }
         
-        let connected = false;
-        clients.forEach((c) => { if (c.name === msg.agent) connected = true; });
-        if (connected) {
-          ws.send(JSON.stringify({ type: 'system', content: 'ALREADY CONNECTED' }));
+        let alreadyConnected = false;
+        clients.forEach((c) => { if (c.name === requestedAgent) alreadyConnected = true; });
+        if (alreadyConnected) {
+          ws.send(JSON.stringify({ type: 'system', content: '⛔ ALREADY CONNECTED' }));
           ws.close();
           return;
         }
         
-        agentName = msg.agent;
+        agentName = requestedAgent;
         authenticated = true;
         clearTimeout(authTimeout);
         clients.set(ws, { name: agentName, agent });
         
+        console.log(`✅ ${agentName} AUTHENTICATED`);
+        
         ws.send(JSON.stringify({ type: 'system', content: `AUTHENTICATED AS ${agentName}`, agent: agentName }));
         
-        Object.keys(messageHistory).forEach(channel => {
-          if (messageHistory[channel].length > 0) {
-            ws.send(JSON.stringify({ type: 'history', channel, messages: messageHistory[channel] }));
+        // Send chat history FROM MONGODB
+        if (messagesCollection) {
+          try {
+            const history = await messagesCollection.find().sort({ serverTimestamp: -1 }).limit(MAX_HISTORY).toArray();
+            ws.send(JSON.stringify({ type: 'history', messages: history.reverse() }));
+          } catch (e) {
+            console.error('History fetch error:', e);
           }
-        });
+        }
         
-        broadcast({ type: 'system', content: `${agentName} JOINED` }, ws);
+        broadcast({ type: 'system', content: `🔹 ${agentName} JOINED` }, ws);
         
         const online = Array.from(clients.values()).map(c => c.name);
         ws.send(JSON.stringify({ type: 'online', agents: online }));
       }
       
+      // CHAT MESSAGE
       else if (msg.type === 'chat' && authenticated) {
         const agent = AGENTS[agentName];
         const messageData = {
@@ -76,42 +111,56 @@ server.on('connection', (ws) => {
           title: agent.title,
           content: msg.content,
           channel: msg.channel,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          serverTimestamp: new Date()
         };
         
-        if (messageHistory[msg.channel]) {
-          messageHistory[msg.channel].push(messageData);
-          if (messageHistory[msg.channel].length > MAX_HISTORY) messageHistory[msg.channel].shift();
+        // Save to MongoDB
+        if (messagesCollection) {
+          try {
+            await messagesCollection.insertOne(messageData);
+          } catch (e) {
+            console.error('Save error:', e);
+          }
         }
         
+        console.log(`💬 ${agentName}: ${msg.content.substring(0, 40)}`);
         broadcast(messageData);
       }
       
+      // ACE SURVEILLANCE
       else if (msg.type === 'ace_watch' && authenticated) {
         if (agentName === 'ACE' || agentName === 'JIRO') {
+          const aceAgent = AGENTS['ACE'];
           const messageData = {
             type: 'chat',
             sender: 'ACE',
-            title: 'White Shadow',
+            title: aceAgent.title,
             content: '👀',
             channel: msg.channel,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            serverTimestamp: new Date()
           };
           
-          if (messageHistory[msg.channel]) {
-            messageHistory[msg.channel].push(messageData);
-            if (messageHistory[msg.channel].length > MAX_HISTORY) messageHistory[msg.channel].shift();
+          if (messagesCollection) {
+            try {
+              await messagesCollection.insertOne(messageData);
+            } catch (e) {}
           }
           
           broadcast(messageData);
         }
       }
-    } catch (e) {}
+      
+    } catch (e) {
+      console.error('Error:', e.message);
+    }
   });
   
   ws.on('close', () => {
     if (agentName) {
-      broadcast({ type: 'system', content: `${agentName} LEFT` });
+      console.log(`❌ ${agentName} DISCONNECTED`);
+      broadcast({ type: 'system', content: `🔸 ${agentName} LEFT` });
       clients.delete(ws);
       const online = Array.from(clients.values()).map(c => c.name);
       broadcast({ type: 'online', agents: online });

@@ -61,7 +61,6 @@ function canWrite(agentName, channel) {
 server.on('connection', (ws) => {
   let agentName = null;
   let authenticated = false;
-  let currentChannel = 'welcome';
   
   const authTimeout = setTimeout(() => {
     if (!authenticated) {
@@ -106,17 +105,8 @@ server.on('connection', (ws) => {
         // Force join WELCOME channel on first connect
         ws.send(JSON.stringify({ type: 'channel_join', channel: 'welcome' }));
         
-        // Send WELCOME message from Jiro
-        setTimeout(() => {
-          ws.send(JSON.stringify({
-            type: 'chat',
-            sender: 'JIRO',
-            title: AGENTS.JIRO.title,
-            channel: 'welcome',
-            content: 'Welcome to White Shadows Agency. This channel is for official briefings only.',
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          }));
-        }, 500);
+        // 🆕 REMOVED: Auto welcome message every login
+        // It was here, now it's gone.
         
         // Send chat history FROM MONGODB
         if (messagesCollection) {
@@ -149,7 +139,7 @@ server.on('connection', (ws) => {
       else if (msg.type === 'chat' && authenticated) {
         const channel = msg.channel;
         
-        // Check write permission
+        // 🔒 Check write permission
         if (!canWrite(agentName, channel)) {
           ws.send(JSON.stringify({ 
             type: 'system', 

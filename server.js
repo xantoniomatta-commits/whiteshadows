@@ -54,11 +54,11 @@ const AGENTS = {
 
 // Channel permissions
 const CHANNEL_PERMISSIONS = {
-  welcome: { read: 'all', write: ['JIRO', 'ACE'] },
-  alpha: { read: 'all', write: ['JIRO', 'ACE'] },
-  beta: { read: 'all', write: ['REL'] },
-  delta: { read: 'all', write: ['GYZAK'] },
-  briefing: { read: 'all', write: 'all' }
+  'welcome': { read: 'all', write: ['JIRO', 'ACE'] },
+  'alpha': { read: 'all', write: ['JIRO', 'ACE'] },
+  'beta': { read: 'all', write: ['REL'] },
+  'delta': { read: 'all', write: ['GYZAK'] },
+  'briefing-room': { read: 'all', write: 'all' }: { read: 'all', write: 'all' }
 };
 
 const clients = new Map();

@@ -8,7 +8,11 @@ const { MongoClient } = require('mongodb');
 const app = express();
 app.use(cors());
 app.use(express.json());
-
+// At the very top, after const app = express();
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', "default-src *; connect-src * 'unsafe-eval' 'unsafe-inline' ws: wss:;");
+  next();
+});
 // === DISABLE CSP COMPLETELY ===
 app.use((req, res, next) => {
   res.removeHeader('Content-Security-Policy');

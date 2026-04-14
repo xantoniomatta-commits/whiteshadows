@@ -9,6 +9,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Disable CSP to allow WebSocket connections
+app.use((req, res, next) => {
+  res.removeHeader('Content-Security-Policy');
+  next();
+});
+
 const PORT = process.env.PORT || 8080;
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });

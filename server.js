@@ -57,7 +57,7 @@ const CHANNEL_PERMISSIONS = {
   'division-alpha': { read: 'all', write: ['JIRO', 'ACE'] },
   'division-beta': { read: 'all', write: ['REL'] },
   'division-delta': { read: 'all', write: ['GYZAK'] },
-  'briefing-room': { read: 'all', write: 'all' }
+  'briefing': { read: 'all', write: 'all' }
 };
 
 const clients = new Map();

@@ -199,9 +199,21 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'pong' }));
       }
       
+      else if (msg.type === 'get_history' && authenticated) {
+        const channel = msg.channel || 'welcome';
+        if (messagesCollection) {
+          try {
+            const history = await messagesCollection.find({ channel }).sort({ serverTimestamp: -1 }).limit(MAX_HISTORY).toArray();
+            ws.send(JSON.stringify({ type: 'history', messages: history.reverse(), channel }));
+          } catch (e) {
+            console.error('History fetch error:', e);
+          }
+        }
+      }
+      
     } catch (e) {
       console.error('Error:', e.message);
-    }
+    }  
   });
   
   ws.on('close', () => {

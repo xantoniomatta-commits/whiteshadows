@@ -8,12 +8,8 @@ const { MongoClient } = require('mongodb');
 const app = express();
 app.use(cors());
 app.use(express.json());
-// At the very top, after const app = express();
-app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src *; connect-src * 'unsafe-eval' 'unsafe-inline' ws: wss:;");
-  next();
-});
-// === DISABLE CSP COMPLETELY ===
+
+// Disable CSP completely
 app.use((req, res, next) => {
   res.removeHeader('Content-Security-Policy');
   res.removeHeader('X-Content-Type-Options');
@@ -56,11 +52,12 @@ const AGENTS = {
   SERA: { codename: 'SERA', accessCode: 'SHADOW-4402', title: 'White Shadow', clearance: 'LEVEL 3', avatar: 'S' }
 };
 
+// Channel permissions - TEMPORARILY ALLOW ALL
 const CHANNEL_PERMISSIONS = {
-  'welcome': { read: 'all', write: ['JIRO', 'ACE'] },
-  'division-alpha': { read: 'all', write: ['JIRO', 'ACE'] },
-  'division-beta': { read: 'all', write: ['REL'] },
-  'division-delta': { read: 'all', write: ['GYZAK'] },
+  'welcome': { read: 'all', write: 'all' },
+  'division-alpha': { read: 'all', write: 'all' },
+  'division-beta': { read: 'all', write: 'all' },
+  'division-delta': { read: 'all', write: 'all' },
   'briefing': { read: 'all', write: 'all' }
 };
 
@@ -70,11 +67,14 @@ const MAX_HISTORY = 100;
 // === CORS ENDPOINT FOR REVONET ===
 app.post('/verify-agent', (req, res) => {
   const { accessCode } = req.body;
+  console.log(`🔐 Verify agent request with code: ${accessCode}`);
   const agent = Object.entries(AGENTS).find(([name, data]) => data.accessCode === accessCode);
   
   if (agent) {
+    console.log(`✅ Agent verified: ${agent[0]}`);
     res.json({ valid: true, agent: agent[0], title: agent[1].title, accessCode: agent[1].accessCode });
   } else {
+    console.log(`❌ Invalid agent code: ${accessCode}`);
     res.json({ valid: false });
   }
 });
@@ -94,16 +94,20 @@ console.log(`🔒 WHITE SHADOWS AGENCY - SERVER READY`);
 console.log(`📍 Listening on port ${PORT}`);
 
 function canWrite(agentName, channel) {
-  console.log(`canWrite check: agent=${agentName}, channel=${channel}`);
-  return true; // TEMPORARY - allow all
+  console.log(`🔍 canWrite check: agent=${agentName}, channel=${channel}`);
+  // TEMPORARY: Allow all messages
+  return true;
 }
 
 wss.on('connection', (ws) => {
   let agentName = null;
   let authenticated = false;
   
+  console.log(`📡 New WebSocket connection`);
+  
   const authTimeout = setTimeout(() => {
     if (!authenticated) {
+      console.log(`⏱️ Authentication timeout for connection`);
       ws.send(JSON.stringify({ type: 'system', content: '⛔ AUTHENTICATION TIMEOUT' }));
       ws.close();
     }
@@ -112,18 +116,21 @@ wss.on('connection', (ws) => {
   ws.on('message', async (data) => {
     try {
       const msg = JSON.parse(data);
+      console.log(`📨 Received: ${msg.type} from ${agentName || 'unknown'}`);
       
       if (msg.type === 'login') {
         const requestedAgent = msg.agent;
         const providedCode = msg.accessCode;
         
+        console.log(`🔑 Login attempt: agent=${requestedAgent}, code=${providedCode}`);
+        
         const agent = AGENTS[requestedAgent];
         if (!agent || agent.accessCode !== providedCode) {
+          console.log(`❌ Login failed: invalid agent or code`);
           ws.send(JSON.stringify({ type: 'system', content: '⛔ ACCESS DENIED' }));
           ws.close();
           return;
         }
-        
         
         agentName = requestedAgent;
         authenticated = true;
@@ -138,8 +145,11 @@ wss.on('connection', (ws) => {
         if (messagesCollection) {
           try {
             const history = await messagesCollection.find().sort({ serverTimestamp: -1 }).limit(MAX_HISTORY).toArray();
+            console.log(`📜 Sending ${history.length} messages to ${agentName}`);
             ws.send(JSON.stringify({ type: 'history', messages: history.reverse() }));
-          } catch (e) {}
+          } catch (e) {
+            console.error('History error:', e);
+          }
         }
         
         broadcast({ type: 'system', content: `🔹 ${agentName} JOINED` }, ws);
@@ -150,9 +160,14 @@ wss.on('connection', (ws) => {
       }
       
       else if (msg.type === 'chat' && authenticated) {
-        const channel = msg.channel;
+        const channel = msg.channel || 'welcome';
+        console.log(`💬 Chat message: agent=${agentName}, channel=${channel}, content="${msg.content}"`);
         
-        if (!canWrite(agentName, channel)) {
+        const canWriteResult = canWrite(agentName, channel);
+        console.log(`🔒 canWrite result: ${canWriteResult}`);
+        
+        if (!canWriteResult) {
+          console.log(`❌ Permission denied for ${agentName} in ${channel}`);
           ws.send(JSON.stringify({ type: 'system', content: `⛔ ACCESS DENIED: You cannot write in #${channel}` }));
           return;
         }
@@ -169,9 +184,15 @@ wss.on('connection', (ws) => {
         };
         
         if (messagesCollection) {
-          try { await messagesCollection.insertOne(messageData); } catch (e) {}
+          try { 
+            await messagesCollection.insertOne(messageData);
+            console.log(`💾 Message saved to MongoDB`);
+          } catch (e) {
+            console.error('Save error:', e);
+          }
         }
         
+        console.log(`📤 Broadcasting message to ${clients.size} clients`);
         broadcast(messageData);
       }
       
@@ -183,7 +204,7 @@ wss.on('connection', (ws) => {
             sender: 'ACE',
             title: aceAgent.title,
             content: '👀',
-            channel: msg.channel,
+            channel: msg.channel || 'welcome',
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             serverTimestamp: new Date()
           };
@@ -193,6 +214,7 @@ wss.on('connection', (ws) => {
           }
           
           broadcast(messageData);
+          console.log(`👀 Ace surveillance in #${msg.channel || 'welcome'}`);
         }
       }
       
@@ -202,6 +224,7 @@ wss.on('connection', (ws) => {
       
       else if (msg.type === 'get_history' && authenticated) {
         const channel = msg.channel || 'welcome';
+        console.log(`📜 History request for channel: ${channel}`);
         if (messagesCollection) {
           try {
             const history = await messagesCollection.find({ channel }).sort({ serverTimestamp: -1 }).limit(MAX_HISTORY).toArray();
@@ -213,26 +236,36 @@ wss.on('connection', (ws) => {
       }
       
     } catch (e) {
-      console.error('Error:', e.message);
+      console.error('❌ Error:', e.message);
     }  
   });
   
   ws.on('close', () => {
+    console.log(`❌ Connection closed for ${agentName || 'unknown'}`);
     if (agentName) {
-      console.log(`❌ ${agentName} DISCONNECTED`);
       broadcast({ type: 'system', content: `🔸 ${agentName} LEFT` });
       clients.delete(ws);
       const online = Array.from(clients.values()).map(c => c.name);
       broadcast({ type: 'online', agents: online });
     }
   });
+  
+  ws.on('error', (e) => {
+    console.error(`⚠️ WebSocket error:`, e.message);
+  });
 });
 
 function broadcast(message, exclude = null) {
+  console.log(`📢 Broadcasting ${message.type} to ${clients.size} clients`);
   const data = JSON.stringify(message);
-  clients.forEach((_, client) => {
-    if (client !== exclude && client.readyState === WebSocket.OPEN) client.send(data);
+  let sent = 0;
+  clients.forEach((client, clientWs) => {
+    if (clientWs !== exclude && clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(data);
+      sent++;
+    }
   });
+  console.log(`✅ Broadcast sent to ${sent} clients`);
 }
 
 server.listen(PORT, () => {

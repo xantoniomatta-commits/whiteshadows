@@ -143,14 +143,16 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'channel_join', channel: 'welcome' }));
         
         if (messagesCollection) {
-          try {
-            const history = await messagesCollection.find().sort({ serverTimestamp: -1 }).limit(MAX_HISTORY).toArray();
-            console.log(`📜 Sending ${history.length} messages to ${agentName}`);
-            ws.send(JSON.stringify({ type: 'history', messages: history.reverse() }));
-          } catch (e) {
-            console.error('History error:', e);
-          }
+        try {
+          // Get all messages, sorted by newest first
+          const history = await messagesCollection.find({}).sort({ serverTimestamp: -1 }).limit(MAX_HISTORY).toArray();
+          console.log(`📜 Sending ${history.length} messages to ${agentName}`);
+          // Reverse so oldest is first for display
+          ws.send(JSON.stringify({ type: 'history', messages: history.reverse() }));
+        } catch (e) {
+          console.error('❌ History error:', e.message);
         }
+      }
         
         broadcast({ type: 'system', content: `🔹 ${agentName} JOINED` }, ws);
         

@@ -52,13 +52,12 @@ const AGENTS = {
   SERA: { codename: 'SERA', accessCode: 'SHADOW-4402', title: 'White Shadow', clearance: 'LEVEL 3', avatar: 'S' }
 };
 
-// Channel permissions
 const CHANNEL_PERMISSIONS = {
   'welcome': { read: 'all', write: ['JIRO', 'ACE'] },
-  'alpha': { read: 'all', write: ['JIRO', 'ACE'] },
-  'beta': { read: 'all', write: ['REL'] },
-  'delta': { read: 'all', write: ['GYZAK'] },
-  'briefing-room': { read: 'all', write: 'all' }: { read: 'all', write: 'all' }
+  'division-alpha': { read: 'all', write: ['JIRO', 'ACE'] },
+  'division-beta': { read: 'all', write: ['REL'] },
+  'division-delta': { read: 'all', write: ['GYZAK'] },
+  'briefing-room': { read: 'all', write: 'all' }
 };
 
 const clients = new Map();

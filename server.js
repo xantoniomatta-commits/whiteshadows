@@ -62,7 +62,7 @@ const CHANNEL_PERMISSIONS = {
 };
 
 const clients = new Map();
-const MAX_HISTORY = 100;
+const MAX_HISTORY = 10000000000;
 
 // === CORS ENDPOINT FOR REVONET ===
 app.post('/verify-agent', (req, res) => {

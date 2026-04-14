@@ -1,15 +1,17 @@
+// White Shadows Agency - WebSocket Server with CORS
 const express = require('express');
 const cors = require('cors');
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-// White Shadows Agency - WebSocket Server with Permissions
+const http = require('http');
 const WebSocket = require('ws');
 const { MongoClient } = require('mongodb');
 
+const app = express();
+app.use(cors());
+app.use(express.json());
+
 const PORT = process.env.PORT || 8080;
-const server = new WebSocket.Server({ port: PORT });
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 // MongoDB Setup
 const MONGODB_URI = 'mongodb+srv://xantoniomatta_db_user:3ANbuBGHPr5HlfrD@whiteshadowsdb.kgx3nj6.mongodb.net/?appName=WhiteShadowsDB';
@@ -52,11 +54,24 @@ const CHANNEL_PERMISSIONS = {
 
 const clients = new Map();
 const MAX_HISTORY = 100;
+const messageHistory = { welcome: [], alpha: [], beta: [], delta: [], briefing: [] };
 
+// === CORS ENDPOINT FOR REVONET ===
+app.post('/verify-agent', (req, res) => {
+  const { accessCode } = req.body;
+  const agent = Object.entries(AGENTS).find(([name, data]) => data.accessCode === accessCode);
+  
+  if (agent) {
+    res.json({ valid: true, agent: agent[0], title: agent[1].title });
+  } else {
+    res.json({ valid: false });
+  }
+});
+
+// === WEBSOCKET SERVER ===
 console.log(`🔒 WHITE SHADOWS AGENCY - SERVER READY`);
 console.log(`📍 Listening on port ${PORT}`);
 
-// Helper: Check if agent can write to channel
 function canWrite(agentName, channel) {
   const perm = CHANNEL_PERMISSIONS[channel];
   if (!perm) return false;
@@ -64,7 +79,7 @@ function canWrite(agentName, channel) {
   return perm.write.includes(agentName);
 }
 
-server.on('connection', (ws) => {
+wss.on('connection', (ws) => {
   let agentName = null;
   let authenticated = false;
   
@@ -79,7 +94,6 @@ server.on('connection', (ws) => {
     try {
       const msg = JSON.parse(data);
       
-      // LOGIN
       if (msg.type === 'login') {
         const requestedAgent = msg.agent;
         const providedCode = msg.accessCode;
@@ -102,19 +116,13 @@ server.on('connection', (ws) => {
         agentName = requestedAgent;
         authenticated = true;
         clearTimeout(authTimeout);
-        clients.set(ws, { name: agentName, agent, currentChannel: 'welcome' });
+        clients.set(ws, { name: agentName, agent });
         
         console.log(`✅ ${agentName} AUTHENTICATED`);
         
         ws.send(JSON.stringify({ type: 'system', content: `AUTHENTICATED AS ${agentName}`, agent: agentName }));
-        
-        // Force join WELCOME channel on first connect
         ws.send(JSON.stringify({ type: 'channel_join', channel: 'welcome' }));
         
-        // 🆕 REMOVED: Auto welcome message every login
-        // It was here, now it's gone.
-        
-        // Send chat history FROM MONGODB
         if (messagesCollection) {
           try {
             const history = await messagesCollection.find().sort({ serverTimestamp: -1 }).limit(MAX_HISTORY).toArray();
@@ -131,26 +139,16 @@ server.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'online', agents: online }));
       }
       
-      // CHANNEL SWITCH
       else if (msg.type === 'channel_switch' && authenticated) {
-        const newChannel = msg.channel;
         const client = clients.get(ws);
-        if (client) {
-          client.currentChannel = newChannel;
-          ws.send(JSON.stringify({ type: 'channel_joined', channel: newChannel }));
-        }
+        if (client) client.currentChannel = msg.channel;
       }
       
-      // CHAT MESSAGE
       else if (msg.type === 'chat' && authenticated) {
         const channel = msg.channel;
         
-        // 🔒 Check write permission
         if (!canWrite(agentName, channel)) {
-          ws.send(JSON.stringify({ 
-            type: 'system', 
-            content: `⛔ ACCESS DENIED: You cannot write in #${channel}` 
-          }));
+          ws.send(JSON.stringify({ type: 'system', content: `⛔ ACCESS DENIED: You cannot write in #${channel}` }));
           return;
         }
         
@@ -165,7 +163,6 @@ server.on('connection', (ws) => {
           serverTimestamp: new Date()
         };
         
-        // Save to MongoDB
         if (messagesCollection) {
           try {
             await messagesCollection.insertOne(messageData);
@@ -174,11 +171,9 @@ server.on('connection', (ws) => {
           }
         }
         
-        console.log(`💬 ${agentName} in #${channel}: ${msg.content.substring(0, 40)}`);
         broadcast(messageData);
       }
       
-      // ACE SURVEILLANCE
       else if (msg.type === 'ace_watch' && authenticated) {
         if (agentName === 'ACE' || agentName === 'JIRO') {
           const aceAgent = AGENTS['ACE'];
@@ -224,3 +219,7 @@ function broadcast(message, exclude = null) {
     if (client !== exclude && client.readyState === WebSocket.OPEN) client.send(data);
   });
 }
+
+server.listen(PORT, () => {
+  console.log(`⚡ SERVER READY - AWAITING AGENTS`);
+});

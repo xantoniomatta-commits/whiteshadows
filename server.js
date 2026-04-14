@@ -123,13 +123,6 @@ wss.on('connection', (ws) => {
           return;
         }
         
-        let alreadyConnected = false;
-        clients.forEach((c) => { if (c.name === requestedAgent) alreadyConnected = true; });
-        if (alreadyConnected) {
-          ws.send(JSON.stringify({ type: 'system', content: '⛔ ALREADY CONNECTED' }));
-          ws.close();
-          return;
-        }
         
         agentName = requestedAgent;
         authenticated = true;

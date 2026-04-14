@@ -9,9 +9,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Disable CSP to allow WebSocket connections
+// === DISABLE CSP COMPLETELY ===
 app.use((req, res, next) => {
   res.removeHeader('Content-Security-Policy');
+  res.removeHeader('X-Content-Type-Options');
+  res.removeHeader('X-Frame-Options');
+  res.removeHeader('X-XSS-Protection');
   next();
 });
 
@@ -60,7 +63,6 @@ const CHANNEL_PERMISSIONS = {
 
 const clients = new Map();
 const MAX_HISTORY = 100;
-const messageHistory = { welcome: [], alpha: [], beta: [], delta: [], briefing: [] };
 
 // === CORS ENDPOINT FOR REVONET ===
 app.post('/verify-agent', (req, res) => {
@@ -68,13 +70,23 @@ app.post('/verify-agent', (req, res) => {
   const agent = Object.entries(AGENTS).find(([name, data]) => data.accessCode === accessCode);
   
   if (agent) {
-    res.json({ valid: true, agent: agent[0], title: agent[1].title });
+    res.json({ valid: true, agent: agent[0], title: agent[1].title, accessCode: agent[1].accessCode });
   } else {
     res.json({ valid: false });
   }
 });
 
-// === WEBSOCKET SERVER ===
+// Get all agents
+app.get('/agents', (req, res) => {
+  const agentList = Object.entries(AGENTS).map(([name, data]) => ({
+    codename: name,
+    accessCode: data.accessCode,
+    title: data.title,
+    alias: data.alias
+  }));
+  res.json({ agents: agentList });
+});
+
 console.log(`🔒 WHITE SHADOWS AGENCY - SERVER READY`);
 console.log(`📍 Listening on port ${PORT}`);
 
@@ -133,9 +145,7 @@ wss.on('connection', (ws) => {
           try {
             const history = await messagesCollection.find().sort({ serverTimestamp: -1 }).limit(MAX_HISTORY).toArray();
             ws.send(JSON.stringify({ type: 'history', messages: history.reverse() }));
-          } catch (e) {
-            console.error('History fetch error:', e);
-          }
+          } catch (e) {}
         }
         
         broadcast({ type: 'system', content: `🔹 ${agentName} JOINED` }, ws);
@@ -143,11 +153,6 @@ wss.on('connection', (ws) => {
         const online = Array.from(clients.values()).map(c => c.name);
         broadcast({ type: 'online', agents: online });
         ws.send(JSON.stringify({ type: 'online', agents: online }));
-      }
-      
-      else if (msg.type === 'channel_switch' && authenticated) {
-        const client = clients.get(ws);
-        if (client) client.currentChannel = msg.channel;
       }
       
       else if (msg.type === 'chat' && authenticated) {
@@ -170,11 +175,7 @@ wss.on('connection', (ws) => {
         };
         
         if (messagesCollection) {
-          try {
-            await messagesCollection.insertOne(messageData);
-          } catch (e) {
-            console.error('Save error:', e);
-          }
+          try { await messagesCollection.insertOne(messageData); } catch (e) {}
         }
         
         broadcast(messageData);
@@ -194,13 +195,15 @@ wss.on('connection', (ws) => {
           };
           
           if (messagesCollection) {
-            try {
-              await messagesCollection.insertOne(messageData);
-            } catch (e) {}
+            try { await messagesCollection.insertOne(messageData); } catch (e) {}
           }
           
           broadcast(messageData);
         }
+      }
+      
+      else if (msg.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong' }));
       }
       
     } catch (e) {

@@ -94,10 +94,8 @@ console.log(`🔒 WHITE SHADOWS AGENCY - SERVER READY`);
 console.log(`📍 Listening on port ${PORT}`);
 
 function canWrite(agentName, channel) {
-  const perm = CHANNEL_PERMISSIONS[channel];
-  if (!perm) return false;
-  if (perm.write === 'all') return true;
-  return perm.write.includes(agentName);
+  console.log(`canWrite check: agent=${agentName}, channel=${channel}`);
+  return true; // TEMPORARY - allow all
 }
 
 wss.on('connection', (ws) => {

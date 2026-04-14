@@ -1,3 +1,9 @@
+const express = require('express');
+const cors = require('cors');
+const app = express();
+
+app.use(cors());
+app.use(express.json());
 // White Shadows Agency - WebSocket Server with Permissions
 const WebSocket = require('ws');
 const { MongoClient } = require('mongodb');
